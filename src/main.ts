@@ -23,6 +23,10 @@ interface Coin {
   readonly j: number;
   readonly serial: number;
 }
+interface Momento<T> {
+  toMomento(): T;
+  fromMomento(momento: T): void;
+}
 
 // Location of our classroom (as identified on Google Maps)
 const LOCATION = leaflet.latLng(36.98949379578401, -122.06277128548504);
@@ -52,11 +56,6 @@ leaflet
   })
   .addTo(map);
 
-// Add a marker to represent the player
-const playerMarker = leaflet.marker(LOCATION);
-playerMarker.bindTooltip("That's you!");
-playerMarker.addTo(map);
-
 // Display the player's points
 const playerCoins: Coin[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!; // element `statusPanel` is defined in index.html
@@ -68,6 +67,55 @@ function updatePoints() {
     statusPanel.innerHTML += `<br>${coin.i}:${coin.j}#${coin.serial}`;
   });
 }
+
+// Add a marker to represent the
+let playerPosition = LOCATION;
+const playerMarker = leaflet.marker(LOCATION);
+playerMarker.bindTooltip("That's you!");
+playerMarker.addTo(map);
+
+//player movement
+function movePlayer(i: number, j: number) {
+  playerPosition = leaflet.latLng({
+    lat: playerPosition.lat + i * TILE_WIDTH,
+    lng: playerPosition.lng + j * TILE_WIDTH,
+  });
+  playerMarker.setLatLng(playerPosition);
+  map.panTo(playerPosition);
+}
+
+document.querySelector<HTMLButtonElement>("#north")?.addEventListener(
+  "click",
+  () => {
+    movePlayer(1, 0);
+  },
+);
+document.querySelector<HTMLButtonElement>("#south")?.addEventListener(
+  "click",
+  () => {
+    movePlayer(-1, 0);
+  },
+);
+document.querySelector<HTMLButtonElement>("#east")?.addEventListener(
+  "click",
+  () => {
+    movePlayer(0, 1);
+  },
+);
+document.querySelector<HTMLButtonElement>("#west")?.addEventListener(
+  "click",
+  () => {
+    movePlayer(0, -1);
+  },
+);
+document.querySelector<HTMLButtonElement>("#reset")?.addEventListener(
+  "click",
+  () => {
+    playerPosition = LOCATION;
+    playerMarker.setLatLng(playerPosition);
+    map.panTo(playerPosition);
+  },
+);
 
 //Create board
 const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
