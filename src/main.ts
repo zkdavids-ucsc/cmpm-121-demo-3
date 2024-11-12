@@ -11,13 +11,26 @@ import "./leafletWorkaround.ts";
 // Deterministic random number generator
 import luck from "./luck.ts";
 
+import "./board.ts";
+import { Board } from "./board.ts";
+
+interface Cell {
+  readonly i: number;
+  readonly j: number;
+}
+interface Coin {
+  readonly i: number;
+  readonly j: number;
+  readonly serial: number;
+}
+
 // Location of our classroom (as identified on Google Maps)
 const LOCATION = leaflet.latLng(36.98949379578401, -122.06277128548504);
 
 // Tunable gameplay parameters
 const GAMEPLAY_ZOOM_LEVEL = 19;
-const TILE_DEGREES = 1e-4;
-const NEIGHBORHOOD_SIZE = 8;
+const TILE_DEGREES = 1e-4; //tile width
+const NEIGHBORHOOD_SIZE = 8; //visibility radius
 const CACHE_SPAWN_PROBABILITY = 0.1;
 
 // Create the map (element with id "map" is defined in index.html)
@@ -45,57 +58,83 @@ playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 
 // Display the player's points
-let playerPoints = 0;
+const playerCoins: Coin[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!; // element `statusPanel` is defined in index.html
 statusPanel.innerHTML = "No points yet...";
 
-// Add caches to the map by cell numbers
-function spawnCache(i: number, j: number) {
-  // Convert cell numbers into lat/lng bounds
-  const origin = LOCATION;
-  const bounds = leaflet.latLngBounds([
-    [origin.lat + i * TILE_DEGREES, origin.lng + j * TILE_DEGREES],
-    [origin.lat + (i + 1) * TILE_DEGREES, origin.lng + (j + 1) * TILE_DEGREES],
-  ]);
+function updatePoints() {
+  statusPanel.innerHTML = "You have " + playerCoins.length + ` coins: `;
+  playerCoins.forEach((coin) => {
+    statusPanel.innerHTML += `<br>${coin.i}, ${coin.j}: ${coin.serial}`;
+  });
+}
 
-  // Add a rectangle to the map to represent the cache
-  const cache = leaflet.rectangle(bounds);
+//Create board
+const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
+board.getCellsNearPoint(LOCATION).forEach((cell) => {
+  if (luck([cell.i, cell.j].toString()) < CACHE_SPAWN_PROBABILITY) {
+    spawnCache(cell);
+  }
+});
+
+// Add caches to the map by cells
+function spawnCache(cell: Cell) {
+  // Add cache (a rectangle) to the map where the cell is
+  const cache: leaflet.Rectangle = leaflet.rectangle(
+    board.getCellBounds(cell),
+  );
   cache.addTo(map);
 
   // Handle interactions with the cache
   cache.bindPopup(() => {
     // Each cache has a random point value, mutable by the player
-    let pointValue = Math.floor(luck([i, j, "initialValue"].toString()) * 100);
+    const pointValue = Math.floor(
+      luck([cell.i, cell.j, "initialValue"].toString()) * 100,
+    );
 
     // The popup offers a description and button
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
-                <div>There is a cache here at "${i},${j}". It has value <span id="value">${pointValue}</span>.</div>
+                <div>There is a cache here at "${cell.i},${cell.j}". It has value <span id="value">${pointValue}</span>.</div>
                 <button id="collect">collect</button><button id="deposit">deposit</button>`;
 
-    // Clicking the button decrements the cache's value and increments the player's points
+    const cacheCoins: Coin[] = [];
+    for (let k = 0; k < pointValue; k++) {
+      cacheCoins[k] = {
+        i: cell.i,
+        j: cell.j,
+        serial: k,
+      };
+    }
+
+    // Collecting coins from a cache
     popupDiv
       .querySelector<HTMLButtonElement>("#collect")!
       .addEventListener("click", () => {
-        if (pointValue > 0) {
-          pointValue--;
+        if (cacheCoins.length > 0) {
+          //scuffed but it was giving me errors before
+          const temp = cacheCoins.pop();
+          if (temp) {
+            playerCoins.push(temp);
+          }
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-            pointValue.toString();
-          playerPoints++;
+            cacheCoins.length.toString();
           updatePoints();
         } else {
           statusPanel.innerHTML = `No more points to collect!`;
         }
       });
-
+    // Deposit Coins onto a cache
     popupDiv
       .querySelector<HTMLButtonElement>("#deposit")!
       .addEventListener("click", () => {
-        if (playerPoints > 0) {
-          pointValue++;
+        if (playerCoins.length > 0) {
+          const temp = playerCoins.pop();
+          if (temp) {
+            cacheCoins.push(temp);
+          }
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-            pointValue.toString();
-          playerPoints--;
+            cacheCoins.length.toString();
           updatePoints();
         } else {
           statusPanel.innerHTML = `Not enough points to deposit :(`;
@@ -104,18 +143,4 @@ function spawnCache(i: number, j: number) {
 
     return popupDiv;
   });
-}
-
-function updatePoints() {
-  statusPanel.innerHTML = `You have ${playerPoints} points`;
-}
-
-// Look around the player's neighborhood for caches to spawn
-for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-  for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-    // If location i,j is lucky enough, spawn a cache!
-    if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-      spawnCache(i, j);
-    }
-  }
 }
