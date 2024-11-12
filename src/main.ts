@@ -29,8 +29,8 @@ const LOCATION = leaflet.latLng(36.98949379578401, -122.06277128548504);
 
 // Tunable gameplay parameters
 const GAMEPLAY_ZOOM_LEVEL = 19;
-const TILE_DEGREES = 1e-4; //tile width
-const NEIGHBORHOOD_SIZE = 8; //visibility radius
+const TILE_WIDTH = 1e-4;
+const TILE_VISIBILITY_RADIUS = 8;
 const CACHE_SPAWN_PROBABILITY = 0.1;
 
 // Create the map (element with id "map" is defined in index.html)
@@ -65,12 +65,12 @@ statusPanel.innerHTML = "No points yet...";
 function updatePoints() {
   statusPanel.innerHTML = "You have " + playerCoins.length + ` coins: `;
   playerCoins.forEach((coin) => {
-    statusPanel.innerHTML += `<br>${coin.i}, ${coin.j}: ${coin.serial}`;
+    statusPanel.innerHTML += `<br>${coin.i}:${coin.j}#${coin.serial}`;
   });
 }
 
 //Create board
-const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
+const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
 board.getCellsNearPoint(LOCATION).forEach((cell) => {
   if (luck([cell.i, cell.j].toString()) < CACHE_SPAWN_PROBABILITY) {
     spawnCache(cell);
