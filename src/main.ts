@@ -1,16 +1,8 @@
-// @deno-types="npm:@types/leaflet@^1.9.14"
 import leaflet from "leaflet";
-
-// Style sheets
 import "leaflet/dist/leaflet.css";
 import "./style.css";
-
-// Fix missing marker images
 import "./leafletWorkaround.ts";
-
-// Deterministic random number generator
 import luck from "./luck.ts";
-
 import "./board.ts";
 import { Board } from "./board.ts";
 
@@ -36,6 +28,7 @@ const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_WIDTH = 1e-4;
 const TILE_VISIBILITY_RADIUS = 6;
 const CACHE_SPAWN_PROBABILITY = 0.1;
+// const STORAGE_KEY = "gamestate-key";
 
 // Create the map (element with id "map" is defined in index.html)
 const map = leaflet.map(document.getElementById("map")!, {
@@ -73,6 +66,11 @@ let playerPosition = LOCATION;
 const playerMarker = leaflet.marker(LOCATION);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
+let playerPath: leaflet.LatLng[] = [LOCATION];
+// let geolocationId: number | null = null;
+let playerPolyLine: leaflet.playerPolyLine | null = leaflet.polyline(
+  playerPath,
+);
 
 //player movement
 function movePlayer(i: number, j: number) {
@@ -82,7 +80,16 @@ function movePlayer(i: number, j: number) {
   });
   playerMarker.setLatLng(playerPosition);
   map.panTo(playerPosition);
+  playerPath.push(leaflet.latLng(playerPosition.lat, playerPosition.lng));
+  updatePlayerPath();
   updateCaches();
+}
+
+function updatePlayerPath() {
+  if (playerPolyLine) {
+    map.removeLayer(playerPolyLine);
+  }
+  playerPolyLine = leaflet.polyline(playerPath, { color: "red" }).addTo(map);
 }
 
 document
@@ -111,6 +118,8 @@ document
     playerPosition = LOCATION;
     playerMarker.setLatLng(playerPosition);
     map.panTo(playerPosition);
+    playerPath = [playerPosition];
+    map.removeLayer(playerPolyLine);
     updateCaches();
   });
 
@@ -210,7 +219,17 @@ class Cache implements Momento<string> {
   }
 }
 
-//Create board
+// function saveGame(){
+//   const gamestate = {
+//     playerPosition,
+//     playerCoins,
+//   }
+// }
+// function loadGame(){
+
+// }
+
+//startup
 const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
 
 updateCaches();
