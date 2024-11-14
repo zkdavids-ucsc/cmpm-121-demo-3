@@ -1,6 +1,5 @@
 # cmpm-121-demo-3
 
-This is the default `README.md` file for the D3 projects. If the student is
-aware of what's going on in their project, they should immediately replace this
-with something more descriptive. It sure would be embarrassing if they forgot to
-do that...
+Demo 3 for CMPM 121. A small game about collecting coins from a map.
+
+This was done with the help of other students' github repositories, including Justin Lam and Jarod Spangler

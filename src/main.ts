@@ -34,7 +34,7 @@ const LOCATION = leaflet.latLng(36.98949379578401, -122.06277128548504);
 // Tunable gameplay parameters
 const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_WIDTH = 1e-4;
-const TILE_VISIBILITY_RADIUS = 8;
+const TILE_VISIBILITY_RADIUS = 6;
 const CACHE_SPAWN_PROBABILITY = 0.1;
 
 // Create the map (element with id "map" is defined in index.html)
@@ -82,113 +82,160 @@ function movePlayer(i: number, j: number) {
   });
   playerMarker.setLatLng(playerPosition);
   map.panTo(playerPosition);
+  updateCaches();
 }
 
-document.querySelector<HTMLButtonElement>("#north")?.addEventListener(
-  "click",
-  () => {
+document
+  .querySelector<HTMLButtonElement>("#north")
+  ?.addEventListener("click", () => {
     movePlayer(1, 0);
-  },
-);
-document.querySelector<HTMLButtonElement>("#south")?.addEventListener(
-  "click",
-  () => {
+  });
+document
+  .querySelector<HTMLButtonElement>("#south")
+  ?.addEventListener("click", () => {
     movePlayer(-1, 0);
-  },
-);
-document.querySelector<HTMLButtonElement>("#east")?.addEventListener(
-  "click",
-  () => {
+  });
+document
+  .querySelector<HTMLButtonElement>("#east")
+  ?.addEventListener("click", () => {
     movePlayer(0, 1);
-  },
-);
-document.querySelector<HTMLButtonElement>("#west")?.addEventListener(
-  "click",
-  () => {
+  });
+document
+  .querySelector<HTMLButtonElement>("#west")
+  ?.addEventListener("click", () => {
     movePlayer(0, -1);
-  },
-);
-document.querySelector<HTMLButtonElement>("#reset")?.addEventListener(
-  "click",
-  () => {
+  });
+document
+  .querySelector<HTMLButtonElement>("#reset")
+  ?.addEventListener("click", () => {
     playerPosition = LOCATION;
     playerMarker.setLatLng(playerPosition);
     map.panTo(playerPosition);
-  },
-);
+    updateCaches();
+  });
 
-//Create board
-const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
-board.getCellsNearPoint(LOCATION).forEach((cell) => {
-  if (luck([cell.i, cell.j].toString()) < CACHE_SPAWN_PROBABILITY) {
-    spawnCache(cell);
+let nearbyCaches: Cache[] = [];
+const cacheMemory: Map<Cell, string> = new Map<Cell, string>();
+
+class Cache implements Momento<string> {
+  private cell: Cell;
+  private coins: Coin[];
+  private area: leaflet.Rectangle;
+  constructor(cell: Cell) {
+    this.cell = cell;
+    this.coins = [];
+    this.area = leaflet.rectangle(
+      leaflet.latLngBounds(leaflet.latLng(0, 0), leaflet.latLng(0, 0)),
+    );
   }
-});
+  toMomento() {
+    return JSON.stringify(this.coins);
+  }
 
-// Add caches to the map by cells
-function spawnCache(cell: Cell) {
-  // Add cache (a rectangle) to the map where the cell is
-  const cache: leaflet.Rectangle = leaflet.rectangle(
-    board.getCellBounds(cell),
-  );
-  cache.addTo(map);
+  fromMomento(momento: string) {
+    this.coins = JSON.parse(momento);
+    this.area = this.createArea();
+  }
 
-  // Handle interactions with the cache
-  cache.bindPopup(() => {
-    // Each cache has a random point value, mutable by the player
+  createNew() {
     const pointValue = Math.floor(
-      luck([cell.i, cell.j, "initialValue"].toString()) * 100,
+      luck([this.cell.i, this.cell.j, "initialValue"].toString()) * 100,
     );
 
-    // The popup offers a description and button
-    const popupDiv = document.createElement("div");
-    popupDiv.innerHTML = `
-                <div>There is a cache here at "${cell.i},${cell.j}". It has value <span id="value">${pointValue}</span>.</div>
-                <button id="collect">collect</button><button id="deposit">deposit</button>`;
-
-    const cacheCoins: Coin[] = [];
     for (let k = 0; k < pointValue; k++) {
-      cacheCoins[k] = {
-        i: cell.i,
-        j: cell.j,
+      this.coins[k] = {
+        i: this.cell.i,
+        j: this.cell.j,
         serial: k,
       };
     }
+    this.area = this.createArea();
+  }
 
-    // Collecting coins from a cache
-    popupDiv
-      .querySelector<HTMLButtonElement>("#collect")!
-      .addEventListener("click", () => {
-        if (cacheCoins.length > 0) {
-          //scuffed but it was giving me errors before
-          const temp = cacheCoins.pop();
-          if (temp) {
-            playerCoins.push(temp);
-          }
-          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-            cacheCoins.length.toString();
-          updatePoints();
-        } else {
-          statusPanel.innerHTML = `No more points to collect!`;
-        }
-      });
-    // Deposit Coins onto a cache
-    popupDiv
-      .querySelector<HTMLButtonElement>("#deposit")!
-      .addEventListener("click", () => {
-        if (playerCoins.length > 0) {
-          const temp = playerCoins.pop();
-          if (temp) {
-            cacheCoins.push(temp);
-          }
-          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-            cacheCoins.length.toString();
-          updatePoints();
-        } else {
-          statusPanel.innerHTML = `Not enough points to deposit :(`;
-        }
-      });
+  createArea(): leaflet.Rectangle {
+    this.deleteArea();
 
-    return popupDiv;
+    const area = leaflet.rectangle(board.getCellBounds(this.cell));
+    area.addTo(map);
+
+    // Handle interactions with the cache
+    area.bindPopup(() => {
+      // The popup offers a description and button
+      const popupDiv = document.createElement("div");
+      popupDiv.innerHTML = `
+                <div>There is a cache here at "${this.cell.i},${this.cell.j}". It has value <span id="value">${this.coins.length}</span>.</div>
+                <button id="collect">collect</button><button id="deposit">deposit</button>`;
+
+      // Collecting coins from a cache
+      popupDiv
+        .querySelector<HTMLButtonElement>("#collect")!
+        .addEventListener("click", () => {
+          if (this.coins.length > 0) {
+            //scuffed but it was giving me errors before
+            const temp = this.coins.pop();
+            if (temp) {
+              playerCoins.push(temp);
+            }
+            popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
+              .coins.length.toString();
+            cacheMemory.set(this.cell, this.toMomento());
+            updatePoints();
+          }
+        });
+      // Deposit Coins onto a cache
+      popupDiv
+        .querySelector<HTMLButtonElement>("#deposit")!
+        .addEventListener("click", () => {
+          if (playerCoins.length > 0) {
+            const temp = playerCoins.pop();
+            if (temp) {
+              this.coins.push(temp);
+            }
+            popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
+              .coins.length.toString();
+            cacheMemory.set(this.cell, this.toMomento());
+            updatePoints();
+          } else {
+            statusPanel.innerHTML = `Not enough points to deposit :(`;
+          }
+        });
+
+      return popupDiv;
+    });
+    return area;
+  }
+
+  deleteArea() {
+    this.area.remove();
+  }
+}
+
+//Create board
+const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
+
+updateCaches();
+
+function updateCaches() {
+  nearbyCaches.forEach((cache) => {
+    console.log("deleting");
+    cache.deleteArea();
   });
+  nearbyCaches = [];
+
+  board.getCellsNearPoint(playerPosition).forEach((cell) => {
+    if (luck([cell.i, cell.j].toString()) < CACHE_SPAWN_PROBABILITY) {
+      nearbyCaches.push(spawnCache(cell));
+    }
+  });
+}
+
+// Add caches to the map by cells
+function spawnCache(cell: Cell): Cache {
+  const cache = new Cache(cell);
+  if (cacheMemory.has(cell)) {
+    cache.fromMomento(cacheMemory.get(cell)!);
+  } else {
+    cache.createNew();
+  }
+  return cache;
 }
