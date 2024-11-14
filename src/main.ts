@@ -21,18 +21,18 @@ interface Momento<T> {
 }
 
 // Location of our classroom (as identified on Google Maps)
-const LOCATION = leaflet.latLng(36.98949379578401, -122.06277128548504);
+const ORIGIN_OAKES = leaflet.latLng(36.98949379578401, -122.06277128548504);
 
 // Tunable gameplay parameters
 const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_WIDTH = 1e-4;
 const TILE_VISIBILITY_RADIUS = 6;
 const CACHE_SPAWN_PROBABILITY = 0.1;
-// const STORAGE_KEY = "gamestate-key";
+const STORAGE_KEY = "gamestate-key";
 
 // Create the map (element with id "map" is defined in index.html)
 const map = leaflet.map(document.getElementById("map")!, {
-  center: LOCATION,
+  center: ORIGIN_OAKES,
   zoom: GAMEPLAY_ZOOM_LEVEL,
   minZoom: GAMEPLAY_ZOOM_LEVEL,
   maxZoom: GAMEPLAY_ZOOM_LEVEL,
@@ -62,11 +62,14 @@ function updatePoints() {
 }
 
 // Add a marker to represent the
-let playerPosition = LOCATION;
-const playerMarker = leaflet.marker(LOCATION);
+let playerPosition = leaflet.latLng({
+  lat: ORIGIN_OAKES.lat,
+  lng: ORIGIN_OAKES.lng,
+});
+const playerMarker = leaflet.marker(playerPosition);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
-let playerPath: leaflet.LatLng[] = [LOCATION];
+let playerPath: leaflet.LatLng[] = [playerPosition];
 let geolocationId: number | null = null;
 let playerPolyLine: leaflet.playerPolyLine | null = leaflet.polyline(
   playerPath,
@@ -81,6 +84,8 @@ function movePlayer(i: number, j: number) {
   playerMarker.setLatLng(playerPosition);
   map.panTo(playerPosition);
   playerPath.push(leaflet.latLng(playerPosition.lat, playerPosition.lng));
+
+  saveGame();
   updatePlayerPath();
   updateCaches();
 }
@@ -115,16 +120,11 @@ document
 document
   .querySelector<HTMLButtonElement>("#reset")
   ?.addEventListener("click", () => {
-    playerPosition = LOCATION;
-    playerMarker.setLatLng(playerPosition);
-    map.panTo(playerPosition);
-    playerPath = [playerPosition];
-    map.removeLayer(playerPolyLine);
-    updateCaches();
+    resetGame();
   });
 
 let nearbyCaches: Cache[] = [];
-const cacheMemory: Map<Cell, string> = new Map<Cell, string>();
+const cacheMemory: Map<string, string> = new Map<string, string>();
 
 class Cache implements Momento<string> {
   private cell: Cell;
@@ -187,8 +187,10 @@ class Cache implements Momento<string> {
             }
             popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
               .coins.length.toString();
-            cacheMemory.set(this.cell, this.toMomento());
+            const key = this.cell.i + ":" + this.cell.j;
+            cacheMemory.set(key, this.toMomento());
             updatePoints();
+            saveGame();
           }
         });
       // Deposit Coins onto a cache
@@ -202,8 +204,10 @@ class Cache implements Momento<string> {
             }
             popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
               .coins.length.toString();
-            cacheMemory.set(this.cell, this.toMomento());
+            const key = this.cell.i + ":" + this.cell.j;
+            cacheMemory.set(key, this.toMomento());
             updatePoints();
+            saveGame();
           } else {
             statusPanel.innerHTML = `Not enough points to deposit :(`;
           }
@@ -219,15 +223,60 @@ class Cache implements Momento<string> {
   }
 }
 
-// function saveGame(){
-//   const gamestate = {
-//     playerPosition,
-//     playerCoins,
-//   }
-// }
-// function loadGame(){
+function saveGame() {
+  const gamestate = {
+    playerPosition,
+    playerCoins,
+    playerPath,
+    caches: Array.from(cacheMemory, ([key, value]) => ({ key, value })),
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(gamestate));
+}
 
-// }
+function loadGame() {
+  const gamestate = localStorage.getItem(STORAGE_KEY);
+  if (gamestate) {
+    const {
+      playerPosition: savedPosition,
+      playerCoins: savedCoins,
+      playerPath: savedPath,
+      caches,
+    } = JSON.parse(gamestate);
+    playerPosition.lat = savedPosition.lat;
+    playerPosition.lng = savedPosition.lng;
+    playerCoins.push(...savedCoins);
+    playerPath = [];
+    playerPath.push(...savedPath);
+    caches.forEach(({ key, value }: { key: string; value: string }) => {
+      cacheMemory.set(key, value);
+    });
+  }
+  updatePlayerPath();
+  playerMarker.setLatLng(playerPosition);
+  map.panTo(playerPosition);
+  updatePoints();
+}
+
+function resetGame() {
+  if (confirm("Are you sure you want to reset?")) {
+    playerPosition = leaflet.latLng({
+      lat: ORIGIN_OAKES.lat,
+      lng: ORIGIN_OAKES.lng,
+    });
+    playerCoins.length = 0;
+    playerPath = [playerPosition];
+    if (playerPolyLine) {
+      map.removeLayer(playerPolyLine);
+      playerPolyLine = leaflet.polyline(playerPath);
+    }
+    cacheMemory.clear();
+    playerMarker.setLatLng(playerPosition);
+    map.panTo(playerPosition);
+    updatePoints();
+    updateCaches();
+    saveGame();
+  }
+}
 
 function enableGeoLocation() {
   if (navigator.geolocation) {
@@ -274,10 +323,13 @@ document
     }
   });
 
-//startup
 const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
-
-updateCaches();
+initialize();
+function initialize() {
+  //startup
+  loadGame();
+  updateCaches();
+}
 
 function updateCaches() {
   nearbyCaches.forEach((cache) => {
@@ -295,8 +347,9 @@ function updateCaches() {
 // Add caches to the map by cells
 function spawnCache(cell: Cell): Cache {
   const cache = new Cache(cell);
-  if (cacheMemory.has(cell)) {
-    cache.fromMomento(cacheMemory.get(cell)!);
+  const key = cell.i + ":" + cell.j;
+  if (cacheMemory.has(key)) {
+    cache.fromMomento(cacheMemory.get(key)!);
   } else {
     cache.createNew();
   }
