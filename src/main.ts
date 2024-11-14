@@ -67,7 +67,7 @@ const playerMarker = leaflet.marker(LOCATION);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 let playerPath: leaflet.LatLng[] = [LOCATION];
-// let geolocationId: number | null = null;
+let geolocationId: number | null = null;
 let playerPolyLine: leaflet.playerPolyLine | null = leaflet.polyline(
   playerPath,
 );
@@ -228,6 +228,51 @@ class Cache implements Momento<string> {
 // function loadGame(){
 
 // }
+
+function enableGeoLocation() {
+  if (navigator.geolocation) {
+    geolocationId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        movePlayer(
+          latitude - playerPosition.lat,
+          longitude - playerPosition.lng,
+        );
+      },
+      (error) => {
+        console.error("Geolocation error: ", error);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 5000,
+      },
+    );
+  } else {
+    alert(
+      "Geolocation failed, try again when it is enabled or on a different browser",
+    );
+  }
+}
+
+function disableGeoLocation() {
+  if (geolocationId !== null) {
+    navigator.geolocation.clearWatch(geolocationId);
+    geolocationId = null;
+  }
+}
+
+document
+  .querySelector<HTMLButtonElement>("#sensor")
+  ?.addEventListener("click", () => {
+    if (geolocationId !== null) {
+      console.log("geolocation off");
+      disableGeoLocation();
+    } else {
+      console.log("geolocation on");
+      enableGeoLocation();
+    }
+  });
 
 //startup
 const board = new Board(TILE_WIDTH, TILE_VISIBILITY_RADIUS);
