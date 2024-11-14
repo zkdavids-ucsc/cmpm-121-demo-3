@@ -59,7 +59,7 @@ leaflet
 // Display the player's points
 const playerCoins: Coin[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!; // element `statusPanel` is defined in index.html
-statusPanel.innerHTML = "No points yet...";
+statusPanel.innerHTML = "No coins yet...";
 
 function updatePoints() {
   statusPanel.innerHTML = "You have " + playerCoins.length + ` coins: `;
@@ -217,7 +217,6 @@ updateCaches();
 
 function updateCaches() {
   nearbyCaches.forEach((cache) => {
-    console.log("deleting");
     cache.deleteArea();
   });
   nearbyCaches = [];
