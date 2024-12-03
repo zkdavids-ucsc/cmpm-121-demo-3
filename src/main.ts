@@ -20,6 +20,7 @@ interface Momento<T> {
   fromMomento(momento: T): void;
 }
 
+const events = new EventTarget();
 // Location of our classroom (as identified on Google Maps)
 const ORIGIN_OAKES = leaflet.latLng(36.98949379578401, -122.06277128548504);
 
@@ -85,9 +86,7 @@ function movePlayer(i: number, j: number) {
   map.panTo(playerPosition);
   playerPath.push(leaflet.latLng(playerPosition.lat, playerPosition.lng));
 
-  saveGame();
-  updatePlayerPath();
-  updateCaches();
+  events.dispatchEvent(new Event("playerMoved"));
 }
 
 function updatePlayerPath() {
@@ -122,6 +121,12 @@ document
   ?.addEventListener("click", () => {
     resetGame();
   });
+
+events.addEventListener("playerMoved", () => {
+  saveGame();
+  updatePlayerPath();
+  updateCaches();
+});
 
 let nearbyCaches: Cache[] = [];
 const cacheMemory: Map<string, string> = new Map<string, string>();
@@ -167,55 +172,55 @@ class Cache implements Momento<string> {
     const area = leaflet.rectangle(board.getCellBounds(this.cell));
     area.addTo(map);
 
-    // Handle interactions with the cache
-    area.bindPopup(() => {
-      // The popup offers a description and button
-      const popupDiv = document.createElement("div");
-      popupDiv.innerHTML = `
-                <div>There is a cache here at "${this.cell.i},${this.cell.j}". It has value <span id="value">${this.coins.length}</span>.</div>
-                <button id="collect">collect</button><button id="deposit">deposit</button>`;
-
-      // Collecting coins from a cache
-      popupDiv
-        .querySelector<HTMLButtonElement>("#collect")!
-        .addEventListener("click", () => {
-          if (this.coins.length > 0) {
-            //scuffed but it was giving me errors before
-            const temp = this.coins.pop();
-            if (temp) {
-              playerCoins.push(temp);
-            }
-            popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
-              .coins.length.toString();
-            const key = this.cell.i + ":" + this.cell.j;
-            cacheMemory.set(key, this.toMomento());
-            updatePoints();
-            saveGame();
-          }
-        });
-      // Deposit Coins onto a cache
-      popupDiv
-        .querySelector<HTMLButtonElement>("#deposit")!
-        .addEventListener("click", () => {
-          if (playerCoins.length > 0) {
-            const temp = playerCoins.pop();
-            if (temp) {
-              this.coins.push(temp);
-            }
-            popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
-              .coins.length.toString();
-            const key = this.cell.i + ":" + this.cell.j;
-            cacheMemory.set(key, this.toMomento());
-            updatePoints();
-            saveGame();
-          } else {
-            statusPanel.innerHTML = `Not enough points to deposit :(`;
-          }
-        });
-
-      return popupDiv;
-    });
+    const popupContent = this.createCachePopup();
+    area.bindPopup(popupContent);
     return area;
+  }
+
+  private createCachePopup(): HTMLElement {
+    const popupDiv = document.createElement("div");
+    popupDiv.innerHTML = `
+      <div>There is a cache here at "${this.cell.i},${this.cell.j}". It has value 
+      <span id="value">${this.coins.length}</span>.</div>
+      <button id="collect">collect</button><button id="deposit">deposit</button>`;
+
+    popupDiv.querySelector<HTMLButtonElement>("#collect")!.addEventListener(
+      "click",
+      () => {
+        if (this.coins.length > 0) {
+          const temp = this.coins.pop();
+          if (temp) {
+            playerCoins.push(temp);
+          }
+          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
+            .coins.length.toString();
+          cacheMemory.set(`${this.cell.i}:${this.cell.j}`, this.toMomento());
+          updatePoints();
+          saveGame();
+        }
+      },
+    );
+
+    popupDiv.querySelector<HTMLButtonElement>("#deposit")!.addEventListener(
+      "click",
+      () => {
+        if (playerCoins.length > 0) {
+          const temp = playerCoins.pop();
+          if (temp) {
+            this.coins.push(temp);
+          }
+          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = this
+            .coins.length.toString();
+          cacheMemory.set(`${this.cell.i}:${this.cell.j}`, this.toMomento());
+          updatePoints();
+          saveGame();
+        } else {
+          statusPanel.innerHTML = `Not enough points to deposit :(`;
+        }
+      },
+    );
+
+    return popupDiv;
   }
 
   deleteArea() {
